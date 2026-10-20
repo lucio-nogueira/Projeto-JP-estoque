@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}.sheet-wrap{overflow-x:auto;margin-top:16px;border:1px solid var(--line)}.sheet{width:100%;border-collapse:collapse;min-width:850px}.sheet th,.sheet td{padding:12px 14px;border:1px solid var(--line);text-align:left}.sheet th{background:var(--sunken);font-size:12px;text-transform:uppercase}.sheet tbody tr:nth-child(4n+3){background:var(--sunken)}.sheet .lnk{padding:0;text-align:left}.sheet td:nth-child(3),.sheet td:nth-child(4),.sheet td:nth-child(5){font-variant-numeric:tabular-nums}.size-grid{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.size-card{border:1px solid var(--line);padding:12px;min-width:100px}.size-card strong{display:block}.size-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:8px 0}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+</style></head><body>
 <title>Josyanne Portela Gerencial</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -249,10 +250,8 @@ input::placeholder{color:var(--muted);opacity:.7}
         <button type="button" data-f="zerado" aria-pressed="false">Zerado</button>
       </div>
     </div>
-    <div class="pgrid phead" aria-hidden="true">
-      <div>Produto</div><div>Categoria</div><div class="num">Entradas</div><div class="num">Saídas</div><div class="num">Saldo</div><div>Situação</div><div></div>
-    </div>
-    <ul class="list" id="listEstoque"></ul>
+    <p class="hint">Selecione um produto para consultar suas características e o saldo por numeração.</p>
+    <div class="sheet-wrap"><table class="sheet"><caption class="sr-only">Estoque de produtos</caption><thead><tr><th>Produto / código</th><th>Categoria</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Situação</th><th>Ações</th></tr></thead><tbody id="listEstoque"></tbody></table></div>
   </section>
 
   <section class="view" id="v-entrada" hidden>
@@ -264,6 +263,7 @@ input::placeholder{color:var(--muted);opacity:.7}
         <div class="field">
           <label for="inProd">Produto</label>
           <select id="inProd"></select>
+          <label for="inSize">Numeração</label><select id="inSize" aria-label="Numeração da entrada"></select>
         </div>
         <div class="row2">
           <div class="field">
@@ -308,6 +308,7 @@ input::placeholder{color:var(--muted);opacity:.7}
         <div class="field">
           <label for="outProd">Produto</label>
           <select id="outProd"></select>
+          <label for="outSize">Numeração</label><select id="outSize" aria-label="Numeração da saída"></select>
         </div>
         <div class="row2">
           <div class="field">
@@ -382,7 +383,7 @@ input::placeholder{color:var(--muted);opacity:.7}
         <div class="field">
           <label for="pUn">Unidade</label>
           <select id="pUn">
-            <option value="un">un</option><option value="cx">cx</option><option value="pct">pct</option>
+            <option value="par">par</option><option value="un">un</option><option value="cx">cx</option><option value="pct">pct</option>
             <option value="kg">kg</option><option value="L">L</option><option value="m">m</option>
           </select>
         </div>
@@ -407,6 +408,7 @@ input::placeholder{color:var(--muted);opacity:.7}
         <input id="pInicial" type="number" inputmode="decimal" min="0" step="any" placeholder="0">
         <span class="hint">Vira uma entrada automática no histórico.</span>
       </div>
+      <fieldset style="border:1px solid var(--line);padding:12px"><legend>Grade de numeração</legend><p class="hint" id="sizeHint">Informe o tamanho e a quantidade inicial de pares. O total é calculado pela grade.</p><div id="sizeRows"></div><button type="button" class="lnk" id="addSize">Adicionar numeração</button></fieldset>
       <p class="err" id="pmErr" role="alert"></p>
       <div class="actions">
         <button type="button" class="btn ghost danger" id="pmDel" hidden>Excluir</button>
@@ -531,6 +533,7 @@ function movRow(m, withDel){
   var parts = [fmtDate(m.data)];
   if (!ent && m.motivo) parts.push(m.motivo);
   if (ent && m.custo != null) parts.push(bf.format(m.custo) + ' por ' + (un || 'un'));
+  if (m.tamanho) parts.push('Tamanho '+m.tamanho);
   if (m.obs) parts.push(m.obs);
   return '<li class="mrow' + (withDel ? ' hasdel' : '') + '">' +
     '<span class="tag ' + (ent ? 'in' : 'out') + '">' + (ent ? 'Entrada' : 'Saída') + '</span>' +
@@ -576,32 +579,15 @@ function renderPainel(){
 
 function renderEstoque(){
   var ul = $('#listEstoque');
-  if (!S.ready) { ul.innerHTML = loadingRow(); return; }
-  if (!S.produtos.length) {
-    ul.innerHTML = '<li class="empty">Nenhum produto cadastrado.<br><button type="button" class="btn" data-newprod>Cadastrar o primeiro produto</button></li>';
-    return;
-  }
-  var q = S.qEstoque.trim().toLowerCase();
   var list = S.produtos.filter(function(p){
-    if (q && ![p.nome, p.codigo, p.categoria].some(function(v){ return String(v || '').toLowerCase().indexOf(q) >= 0; })) return false;
-    var st = statusOf(p, calcMap.get(p.id).saldo)[0];
-    return S.fEstoque === 'todos' || (S.fEstoque === 'baixo' && st === 'warn') || (S.fEstoque === 'zerado' && st === 'bad');
+    var q = S.qEstoque.trim().toLowerCase(), st = statusOf(p, calcMap.get(p.id).saldo)[0];
+    return (!q || [p.nome,p.codigo,p.categoria].some(function(v){return String(v || '').toLowerCase().includes(q);})) && (S.fEstoque === 'todos' || (S.fEstoque === 'baixo' && st === 'warn') || (S.fEstoque === 'zerado' && st === 'bad'));
   }).sort(byName);
-  if (!list.length) { ul.innerHTML = '<li class="empty">Nenhum produto encontrado com esse filtro.</li>'; return; }
-  ul.innerHTML = list.map(function(p){
-    var r = calcMap.get(p.id), st = statusOf(p, r.saldo), un = esc(p.unidade || '');
-    return '<li class="pgrid">' +
-      '<div class="pname"><strong>' + esc(p.nome) + '</strong><span class="code">' + esc(p.codigo || '') + '</span></div>' +
-      '<div class="cell pcat" data-l="Categoria">' + (esc(p.categoria) || '—') + '</div>' +
-      '<div class="cell num pin" data-l="Entradas">' + nf.format(r.ent) + '</div>' +
-      '<div class="cell num pout" data-l="Saídas">' + nf.format(r.sai) + '</div>' +
-      '<div class="cell num psaldo" data-l="Saldo"><b>' + nf.format(r.saldo) + '</b> ' + un + '</div>' +
-      '<div class="pstatus"><span class="st ' + st[0] + '">' + st[1] + '</span></div>' +
-      '<div class="pact">' +
-        '<button type="button" class="lnk" data-act="in" data-id="' + esc(p.id) + '">Entrada</button>' +
-        '<button type="button" class="lnk" data-act="out" data-id="' + esc(p.id) + '">Saída</button>' +
-        '<button type="button" class="lnk" data-act="edit" data-id="' + esc(p.id) + '">Editar</button>' +
-      '</div></li>';
+  ul.innerHTML = !S.ready ? '<tr><td colspan="7">Carregando…</td></tr>' : !list.length ? '<tr><td colspan="7">Nenhum produto encontrado. <button class="lnk" data-newprod>Cadastrar produto</button></td></tr>' : list.map(function(p,i){
+    var r=calcMap.get(p.id), st=statusOf(p,r.saldo), id=esc(p.id);
+    var sizes=(p.tamanhos || []).slice();
+    S.movimentos.filter(function(m){return m.produtoId===p.id;}).forEach(function(m){var key=m.tamanho || '';if(!sizes.includes(key)) sizes.push(key);});
+    return '<tr><td><button class="lnk" data-detail="detail-'+i+'" aria-expanded="false" aria-controls="detail-'+i+'">'+esc(p.nome)+'</button><span class="code">'+esc(p.codigo)+'</span></td><td>'+esc(p.categoria || '—')+'</td><td>'+nf.format(r.ent)+'</td><td>'+nf.format(r.sai)+'</td><td><strong>'+nf.format(r.saldo)+'</strong> '+esc(p.unidade)+'</td><td><span class="st '+st[0]+'">'+st[1]+'</span></td><td>'+['in','out','edit'].map(function(a,j){return '<button class="lnk" data-act="'+a+'" data-id="'+id+'">'+['Entrada','Saída','Editar'][j]+'</button>';}).join(' · ')+'</td></tr><tr id="detail-'+i+'" hidden><td colspan="7"><strong>'+esc(p.nome)+'</strong><p>Categoria: '+esc(p.categoria || '—')+' · Custo: '+bf.format(p.custo || 0)+' · Estoque mínimo: '+nf.format(p.minimo || 0)+'</p><div class="size-grid">'+sizes.map(function(t){return '<div class="size-card">'+(t ? 'Tamanho '+esc(t) : 'Sem numeração')+'<strong>'+nf.format(sizeBalance(p.id,t))+' '+esc(p.unidade)+'</strong></div>';}).join('')+'</div></td></tr>';
   }).join('');
 }
 
@@ -647,12 +633,15 @@ function fillSelects(){
 }
 
 function updCalc(k){
+  fillSizes(k);
   var pid = $('#' + k + 'Prod').value, qtd = parseFloat($('#' + k + 'Qtd').value);
   var q = qtd > 0 ? r3(qtd) : 0;
   var box = $('#calc' + (k === 'in' ? 'In' : 'Out'));
   var a = $('[data-c="a"]', box), m = $('[data-c="m"]', box), d = $('[data-c="d"]', box);
   var p = pMap.get(pid), r = calcMap.get(pid);
   if (!p || !r) { a.textContent = m.textContent = d.textContent = '—'; box.classList.remove('neg'); return; }
+  var selectedSize=$('#'+k+'Size').value;
+  if(selectedSize) r={saldo:sizeBalance(pid,selectedSize==='__none__'?'':selectedSize)};
   var un = ' ' + (p.unidade || ''), depois = k === 'in' ? r3(r.saldo + q) : r3(r.saldo - q);
   a.textContent = nf.format(r.saldo) + un;
   m.textContent = (k === 'in' ? '+' : '−') + nf.format(q) + un;
@@ -726,18 +715,37 @@ function endConfirm(v){
 
 /* Produto: criar, editar, excluir */
 var editId = null;
+function sizeBalance(pid,size){return r3(S.movimentos.filter(function(m){return m.produtoId===pid && (m.tamanho || '')===size;}).reduce(function(n,m){return n+(m.tipo==='entrada'?1:-1)*m.qtd;},0));}
+function fillSizes(k){
+ var sel=$('#'+k+'Size'), old=sel.value, p=pMap.get($('#'+k+'Prod').value), sizes=p && p.tamanhos || [];
+ sel.innerHTML='<option value="">'+(sizes.length?'Selecione a numeração':'Sem numeração')+'</option>'+sizes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+' — saldo '+nf.format(sizeBalance(p.id,t))+'</option>';}).join('');
+ if(k==='out' && sizes.length && sizeBalance(p.id,'')>0) sel.add(new Option('Sem numeração — saldo '+nf.format(sizeBalance(p.id,'')),'__none__'));
+ if(sizes.includes(old) || old==='__none__') sel.value=old;
+}
+function addSizeRow(size,qty){
+ var row=document.createElement('div');row.className='size-row';row.innerHTML='<input aria-label="Tamanho" type="number" min="1" max="60" step="1" placeholder="Ex.: 36" value="'+esc(size || '')+'" '+(editId && size?'readonly':'')+'><input aria-label="Quantidade de pares" type="number" min="0" step="1" placeholder="Pares" value="'+esc(qty == null?'':qty)+'" '+(editId?'disabled':'')+'><button type="button" class="lnk">Remover</button>';
+ row.lastChild.onclick=function(){if(editId && size){toast('Numerações cadastradas são mantidas para preservar o histórico.');return;} row.remove();syncInitial();};
+ row.oninput=syncInitial;$('#sizeRows').appendChild(row);syncInitial();
+}
+function syncInitial(){var rows=$$('.size-row');if(!rows.length && $('#pInicial').disabled) $('#pInicial').value='';$('#pInicial').disabled=rows.length>0;if(rows.length) $('#pInicial').value=rows.reduce(function(n,row){return n+(Number(row.children[1].value)||0);},0);}
+$('#addSize').onclick=function(){addSizeRow();};
+
 function openProd(id){
   editId = id || null;
   var p = id ? pMap.get(id) : null;
   $('#pmTitle').textContent = p ? 'Editar produto' : 'Novo produto';
   $('#pNome').value = p ? p.nome : '';
   $('#pCodigo').value = p ? (p.codigo || '') : '';
-  $('#pUn').value = p ? (p.unidade || 'un') : 'un';
+  $('#pUn').value = p ? (p.unidade || 'un') : 'par';
   $('#pCategoria').value = p ? (p.categoria || '') : '';
   $('#pMin').value = p && p.minimo ? p.minimo : '';
   $('#pCusto').value = p && p.custo ? p.custo : '';
   $('#pInicial').value = '';
   $('#fInicial').hidden = !!p;
+  $('#sizeRows').innerHTML='';
+  (p && p.tamanhos || []).forEach(function(t){addSizeRow(t,sizeBalance(p.id,t));});
+  $('#sizeHint').textContent=p?'Adicione numerações aqui. Ajuste as quantidades pelas telas Entrada e Saída.':'Informe tamanho e quantidade inicial de pares. O total é calculado pela grade.';
+  syncInitial();
   $('#pmDel').hidden = !p;
   $('#pmErr').textContent = '';
   openOv('#ovProd');
@@ -757,8 +765,10 @@ $('#formProd').addEventListener('submit', async function(e){
     var n = S.produtos.length + 1;
     do { codigo = 'P' + String(n++).padStart(3, '0'); } while (S.produtos.some(function(x){ return x.codigo === codigo; }));
   }
-  var base = {
-    nome: nome, codigo: codigo, categoria: $('#pCategoria').value.trim(), unidade: $('#pUn').value,
+  var grade=$$('.size-row').map(function(row){return {t:row.children[0].value.trim()?String(Number(row.children[0].value)):'',q:editId?0:Number(row.children[1].value)};});
+  if(grade.some(function(x){return !x.t || !Number.isInteger(Number(x.t)) || +x.t<1 || +x.t>60 || !Number.isInteger(x.q) || x.q<0;}) || new Set(grade.map(function(x){return x.t;})).size!==grade.length){err.textContent='Informe tamanhos únicos de 1 a 60 e quantidades inteiras a partir de zero.';return;}
+  var base = {tamanhos:grade.map(function(x){return x.t;}),
+    nome: nome, codigo: codigo, categoria: $('#pCategoria').value.trim(), unidade: grade.length?'par':$('#pUn').value,
     minimo: Math.max(0, parseFloat($('#pMin').value) || 0), custo: Math.max(0, parseFloat($('#pCusto').value) || 0)
   };
   var ok;
@@ -770,7 +780,8 @@ $('#formProd').addEventListener('submit', async function(e){
     var ini = parseFloat($('#pInicial').value);
     ok = await run(async function(){
       await put('produtos', prod);
-      if (ini > 0) await put('movimentos', {id: uid(), produtoId: prod.id, tipo: 'entrada', qtd: r3(ini), data: today(), obs: 'Estoque inicial', ts: Date.now()});
+      if(grade.length){for(var g of grade){if(g.q>0) await put('movimentos',{id:uid(),produtoId:prod.id,tipo:'entrada',qtd:g.q,tamanho:g.t,data:today(),obs:'Estoque inicial',ts:Date.now()});}}
+      else if (ini > 0) await put('movimentos', {id: uid(), produtoId: prod.id, tipo: 'entrada', qtd: r3(ini), data: today(), obs: 'Estoque inicial', ts: Date.now()});
     }, 'Produto cadastrado');
   }
   if (ok) closeOv('#ovProd');
@@ -796,8 +807,10 @@ $('#formIn').addEventListener('submit', async function(e){
   var pid = $('#inProd').value, qtd = parseFloat($('#inQtd').value);
   if (!pid) { err.textContent = 'Escolha um produto.'; return; }
   if (!(qtd > 0)) { err.textContent = 'Informe uma quantidade maior que zero.'; $('#inQtd').focus(); return; }
+  var tamanho=$('#inSize').value, produto=pMap.get(pid);
+  if((produto.tamanhos || []).length && (!tamanho || !Number.isInteger(qtd))){err.textContent='Selecione a numeração e informe uma quantidade inteira de pares.';return;}
   var raw = $('#inCusto').value, custo = raw === '' ? null : parseFloat(raw);
-  var mv = {id: uid(), produtoId: pid, tipo: 'entrada', qtd: r3(qtd), data: $('#inData').value || today(), obs: $('#inObs').value.trim(), ts: Date.now()};
+  var mv = {id: uid(), produtoId: pid, tamanho: tamanho==='__none__'?'':tamanho, tipo: 'entrada', qtd: r3(qtd), data: $('#inData').value || today(), obs: $('#inObs').value.trim(), ts: Date.now()};
   if (custo != null && custo >= 0) mv.custo = custo;
   var p = pMap.get(pid);
   var ok = await run(async function(){
@@ -814,16 +827,20 @@ $('#formOut').addEventListener('submit', async function(e){
   var pid = $('#outProd').value, qtd = parseFloat($('#outQtd').value);
   if (!pid) { err.textContent = 'Escolha um produto.'; return; }
   if (!(qtd > 0)) { err.textContent = 'Informe uma quantidade maior que zero.'; $('#outQtd').focus(); return; }
+  var tamanho=$('#outSize').value, produto=pMap.get(pid);
+  if((produto.tamanhos || []).length && (!tamanho || !Number.isInteger(qtd))){err.textContent='Selecione a numeração e informe uma quantidade inteira de pares.';return;}
+  if(tamanho && qtd>sizeBalance(pid,tamanho==='__none__'?'':tamanho)){err.textContent='Saldo insuficiente para esta numeração.';return;}
   var p = pMap.get(pid), r = calcMap.get(pid);
   if (r3(qtd) > r.saldo) {
     err.textContent = 'Saldo insuficiente: há ' + nf.format(r.saldo) + ' ' + (p.unidade || '') + ' em estoque.'; return;
   }
-  var mv = {id: uid(), produtoId: pid, tipo: 'saida', qtd: r3(qtd), motivo: $('#outMotivo').value, data: $('#outData').value || today(), obs: $('#outObs').value.trim(), ts: Date.now()};
+  var mv = {id: uid(), produtoId: pid, tamanho: tamanho==='__none__'?'':tamanho, tipo: 'saida', qtd: r3(qtd), motivo: $('#outMotivo').value, data: $('#outData').value || today(), obs: $('#outObs').value.trim(), ts: Date.now()};
   var ok = await run(function(){ return put('movimentos', mv); }, 'Saída registrada');
   if (ok) { $('#outQtd').value = ''; $('#outObs').value = ''; updCalc('out'); }
 });
 
 ['in', 'out'].forEach(function(k){
+  $('#'+k+'Size').addEventListener('change',function(){updCalc(k);});
   $('#' + k + 'Qtd').addEventListener('input', function(){ updCalc(k); });
   $('#' + k + 'Prod').addEventListener('change', function(){
     if (k === 'in') { var p = pMap.get($('#inProd').value); $('#inCusto').value = p && p.custo ? p.custo : ''; }
@@ -847,12 +864,13 @@ bindSeg('#segHist', 'fHist', renderHist);
 
 /* Cliques gerais */
 document.addEventListener('click', async function(e){
-  var t = e.target.closest('[data-go],[data-act],[data-del-mov],[data-close],[data-newprod]');
+  var t = e.target.closest('[data-go],[data-act],[data-del-mov],[data-close],[data-newprod],[data-detail]');
   if (e.target.classList && e.target.classList.contains('overlay')) {
     if (e.target.id === 'ovConf') endConfirm(false); else closeOv('#' + e.target.id);
     return;
   }
   if (!t) return;
+  if(t.hasAttribute('data-detail')){var detail=document.getElementById(t.dataset.detail);detail.hidden=!detail.hidden;t.setAttribute('aria-expanded',String(!detail.hidden));return;}
   if (t.hasAttribute('data-go')) { go(t.getAttribute('data-go')); return; }
   if (t.hasAttribute('data-newprod')) { openProd(null); return; }
   if (t.hasAttribute('data-close')) { closeOv('#ovProd'); return; }
