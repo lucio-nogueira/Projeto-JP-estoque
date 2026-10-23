@@ -120,13 +120,13 @@ h1{font-family:var(--font-display);font-weight:600;font-size:clamp(26px,6vw,36px
 .stock-filters summary::after{content:'';width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s}
 .stock-filters[open] summary::after{transform:rotate(225deg)}
 .stock-filters[open] summary{border-color:var(--ink)}
-#stockFilterCount{border-radius:12px;background:var(--ink);color:var(--bg);padding:0 7px;font-size:12px}
+#stockFilterCount,#historyFilterCount{border-radius:12px;background:var(--ink);color:var(--bg);padding:0 7px;font-size:12px}
 .filter-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:15;width:min(320px,calc(100vw - 32px));max-height:55vh;overflow-y:auto;padding:16px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.12)}
 .filter-panel fieldset{border:0;padding:0;margin:0 0 16px;min-width:0}
 .filter-panel legend{font-family:var(--font-display);font-weight:600;margin-bottom:6px}
 .filter-panel label{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-weight:400}
 .tools .filter-panel input[type="checkbox"]{flex:none;width:18px;height:18px;min-height:0;margin:0;padding:0;accent-color:var(--ink)}
-#stockSizeOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+#stockSizeOptions,#historySizeOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius);overflow:hidden}
 .seg button{min-height:44px;padding:0 16px;background:none;border:0;border-right:1px solid var(--line-strong);color:var(--muted);font-size:14px;font-weight:500;cursor:pointer}
 .seg button:last-child{border-right:0}
@@ -274,11 +274,11 @@ input::placeholder{color:var(--muted);opacity:.7}
         <summary>Filtrar <span id="stockFilterCount" hidden></span></summary>
         <div class="filter-panel">
           <fieldset><legend>Numeração</legend>
-            <label><input type="checkbox" id="allStockSizes" checked> Todas as numerações</label>
+            <label><input type="checkbox" id="allStockSizes"> Todas as numerações</label>
             <div id="stockSizeOptions"></div>
           </fieldset>
-          <fieldset><legend>Situação do estoque</legend>
-            <label><input type="checkbox" name="stockStatus" value="todos" checked> Todos</label>
+          <fieldset><legend>Situação do estoque</legend><p class="hint">Sem opções marcadas, todas as situações são exibidas.</p>
+            <label><input type="checkbox" name="stockStatus" value="todos"> Todos</label>
             <label><input type="checkbox" name="stockStatus" value="baixo"> Baixo</label>
             <label><input type="checkbox" name="stockStatus" value="zerado"> Zerado</label>
           </fieldset>
@@ -392,11 +392,26 @@ input::placeholder{color:var(--muted);opacity:.7}
     </div>
     <div class="tools">
       <input id="qHist" type="search" placeholder="Buscar por produto, motivo ou observação" aria-label="Buscar movimentação" autocomplete="off">
-      <div class="seg" id="segHist" role="group" aria-label="Filtrar movimentações">
-        <button type="button" data-f="todos" aria-pressed="true">Todas</button>
-        <button type="button" data-f="entrada" aria-pressed="false">Entradas</button>
-        <button type="button" data-f="saida" aria-pressed="false">Saídas</button>
-      </div>
+      <details class="stock-filters" id="historyFilters">
+        <summary>Filtrar <span id="historyFilterCount" hidden></span></summary>
+        <div class="filter-panel">
+          <fieldset><legend>Tipo de movimentação</legend>
+            <label><input type="checkbox" name="historyType" value="todos"> Todas</label>
+            <label><input type="checkbox" name="historyType" value="entrada"> Entradas</label>
+            <label><input type="checkbox" name="historyType" value="saida"> Saídas</label>
+          </fieldset>
+          <fieldset><legend>Numeração</legend>
+            <label><input type="checkbox" id="allHistorySizes"> Todas as numerações</label>
+            <div id="historySizeOptions"></div>
+          </fieldset>
+          <fieldset><legend>Situação atual do estoque</legend><p class="hint">Usa o saldo atual do produto ou da numeração. Sem opções marcadas, todas as situações são exibidas.</p>
+            <label><input type="checkbox" name="historyStatus" value="todos"> Todos</label>
+            <label><input type="checkbox" name="historyStatus" value="baixo"> Baixo</label>
+            <label><input type="checkbox" name="historyStatus" value="zerado"> Zerado</label>
+          </fieldset>
+          <button type="button" class="lnk" id="clearHistoryFilters">Limpar filtros</button>
+        </div>
+      </details>
     </div>
     <ul class="list" id="listHist"></ul>
   </section>
@@ -492,7 +507,7 @@ var clean = function(o){ return JSON.parse(JSON.stringify(o)); };
 var VIEWS = ['painel', 'estoque', 'entrada', 'saida', 'historico'];
 var S = {
   produtos: [], movimentos: [], ready: false, mode: 'local', memOnly: false,
-  view: 'painel', stockStatuses: [], stockSizes: [], qEstoque: '', fHist: 'todos', qHist: ''
+  view: 'painel', stockStatuses: [], stockSizes: [], stockAllSizes: false, qEstoque: '', historyStatuses: [], historySizes: [], historyAllSizes: false, historyTypes: [], qHist: ''
 };
 var DB = null, calcMap = new Map(), pMap = new Map();
 var LS_KEY = 'jp-gerencial-v1';
@@ -612,6 +627,19 @@ function renderPainel(){
 
 }
 
+function syncFilterOptions(prefix,availableSizes){
+  var sizeOptions = $('#'+prefix+'SizeOptions');
+  var orderedSizes = Array.from(new Set(Array.from(availableSizes).concat(S[prefix+'Sizes']))).sort(function(a,b){return a.localeCompare(b,'pt-BR',{numeric:true});});
+  var signature = JSON.stringify(orderedSizes);
+  if (sizeOptions.dataset.signature !== signature) {
+    sizeOptions.dataset.signature = signature;
+    sizeOptions.innerHTML = orderedSizes.length ? orderedSizes.map(function(t){return '<label><input type="checkbox" name="'+prefix+'Size" value="'+esc(t)+'"> Tamanho '+esc(t)+'</label>';}).join('') : '<p class="hint">Nenhuma numeração cadastrada.</p>';
+  }
+  $$('input[name="'+prefix+'Size"]').forEach(function(input){input.checked=S[prefix+'Sizes'].includes(input.value);});
+  $('#all'+(prefix==='stock'?'Stock':'History')+'Sizes').checked=S[prefix+'AllSizes'];
+  $$('input[name="'+prefix+'Status"]').forEach(function(input){input.checked=S[prefix+'Statuses'].includes(input.value);});
+}
+
 function renderEstoque(){
   var ul = $('#listEstoque'), selectedSizes = S.stockSizes, selectedSize = selectedSizes.length > 0;
   var availableSizes = new Set();
@@ -621,22 +649,13 @@ function renderEstoque(){
     return Array.from(sizes);
   }
   S.produtos.forEach(function(p){productSizes(p).forEach(function(t){availableSizes.add(t);});});
-  var sizeOptions = $('#stockSizeOptions');
-  var orderedSizes = Array.from(new Set(Array.from(availableSizes).concat(selectedSizes))).sort(function(a,b){return a.localeCompare(b,'pt-BR',{numeric:true});});
-  var signature = JSON.stringify(orderedSizes);
-  if (sizeOptions.dataset.signature !== signature) {
-    sizeOptions.dataset.signature = signature;
-    sizeOptions.innerHTML = orderedSizes.length ? orderedSizes.map(function(t){return '<label><input type="checkbox" name="stockSize" value="'+esc(t)+'"> Tamanho '+esc(t)+'</label>';}).join('') : '<p class="hint">Nenhuma numeração cadastrada.</p>';
-  }
-  $$('input[name="stockSize"]').forEach(function(input){input.checked=selectedSizes.includes(input.value);});
-  $('#allStockSizes').checked = !selectedSizes.length;
-  $$('input[name="stockStatus"]').forEach(function(input){input.checked=input.value==='todos' ? !S.stockStatuses.length : S.stockStatuses.includes(input.value);});
-  var count = selectedSizes.length + S.stockStatuses.length;
+  syncFilterOptions('stock',availableSizes);
+  var count = selectedSizes.length + S.stockStatuses.filter(function(st){return st!=='todos';}).length;
   $('#stockFilterCount').hidden = !count;
   $('#stockFilterCount').textContent = count;
   function matchesStatus(p,saldo){
     var st=statusOf(p,saldo)[0];
-    return !S.stockStatuses.length || (S.stockStatuses.includes('baixo') && st==='warn') || (S.stockStatuses.includes('zerado') && st==='bad');
+    return !S.stockStatuses.length || S.stockStatuses.includes('todos') || (S.stockStatuses.includes('baixo') && st==='warn') || (S.stockStatuses.includes('zerado') && st==='bad');
   }
   function matchingSizes(p){
     return productSizes(p).filter(function(t){return selectedSizes.includes(t) && matchesStatus(p,sizeBalance(p.id,t));});
@@ -659,7 +678,7 @@ function renderEstoque(){
   summary.hidden = !count;
   var labels=[];
   if(selectedSize) labels.push('Numeração: '+selectedSizes.join(', '));
-  if(S.stockStatuses.length) labels.push('Situação: '+S.stockStatuses.map(function(st){return st==='baixo'?'Baixo':'Zerado';}).join(', '));
+  if(S.stockStatuses.length && !S.stockStatuses.includes('todos')) labels.push('Situação: '+S.stockStatuses.map(function(st){return st==='baixo'?'Baixo':'Zerado';}).join(', '));
   summary.textContent=labels.join(' · ')+' · '+list.length+' modelo(s) · Saldo: '+nf.format(r3(list.reduce(function(total,p){return total+stockFor(p).saldo;},0)))+' pares.'+(selectedSize?' Quantidades referentes às numerações que atendem aos filtros.':'');
   ul.innerHTML = !S.ready ? '<tr><td colspan="7">Carregando…</td></tr>' : !list.length ? '<tr><td colspan="7">Nenhum produto encontrado para os filtros selecionados. <button class="lnk" data-newprod>Cadastrar produto</button></td></tr>' : list.map(function(p,i){
     var r=stockFor(p), st=statusOf(p,r.saldo), id=esc(p.id);
@@ -685,9 +704,23 @@ function renderRecent(tipo, sel){
 function renderHist(){
   var ul = $('#listHist');
   if (!S.ready) { ul.innerHTML = loadingRow(); return; }
+  var availableSizes=new Set();
+  S.movimentos.forEach(function(m){if(m.tamanho) availableSizes.add(String(m.tamanho));});
+  syncFilterOptions('history',availableSizes);
+  $$('input[name="historyType"]').forEach(function(input){input.checked=S.historyTypes.includes(input.value);});
+  var count=S.historySizes.length+S.historyStatuses.filter(function(st){return st!=='todos';}).length+S.historyTypes.filter(function(t){return t!=='todos';}).length;
+  $('#historyFilterCount').hidden=!count;$('#historyFilterCount').textContent=count;
   var q = S.qHist.trim().toLowerCase();
   var list = movsSorted().filter(function(m){
-    if (S.fHist !== 'todos' && m.tipo !== S.fHist) return false;
+    if(S.historyTypes.length && !S.historyTypes.includes('todos') && !S.historyTypes.includes(m.tipo)) return false;
+    if(S.historySizes.length && !S.historySizes.includes(String(m.tamanho || ''))) return false;
+    if(S.historyStatuses.length && !S.historyStatuses.includes('todos')){
+      var product=pMap.get(m.produtoId);
+      if(!product) return false;
+      var balance=m.tamanho?sizeBalance(product.id,String(m.tamanho)):calcMap.get(product.id).saldo;
+      var status=statusOf(product,balance)[0];
+      if(!((S.historyStatuses.includes('baixo') && status==='warn') || (S.historyStatuses.includes('zerado') && status==='bad'))) return false;
+    }
     if (!q) return true;
     var p = pMap.get(m.produtoId);
     return [p ? p.nome : '', m.motivo, m.obs].some(function(v){ return String(v || '').toLowerCase().indexOf(q) >= 0; });
@@ -932,31 +965,32 @@ $('#formOut').addEventListener('submit', async function(e){
 });
 
 /* Filtros */
-$('#stockFilters').addEventListener('change',function(e){
-  var input=e.target;
-  if(input.id==='allStockSizes') S.stockSizes=[];
-  else if(input.name==='stockSize') S.stockSizes=$$('input[name="stockSize"]:checked').map(function(x){return x.value;});
-  else if(input.name==='stockStatus') {
-    S.stockStatuses=input.value==='todos' ? [] : $$('input[name="stockStatus"]:checked').filter(function(x){return x.value!=='todos';}).map(function(x){return x.value;});
-  }
-  renderEstoque();
-});
-$('#clearStockFilters').addEventListener('click',function(){S.stockSizes=[];S.stockStatuses=[];renderEstoque();});
-$('#qEstoque').addEventListener('input', function(e){ S.qEstoque = e.target.value; renderEstoque(); });
-$('#qHist').addEventListener('input', function(e){ S.qHist = e.target.value; renderHist(); });
-function bindSeg(sel, key, fn){
-  $(sel).addEventListener('click', function(e){
-    var b = e.target.closest('button[data-f]'); if (!b) return;
-    S[key] = b.getAttribute('data-f');
-    $$('button', $(sel)).forEach(function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
-    fn();
+function bindFilter(prefix,renderFilter){
+  var capital=prefix==='stock'?'Stock':'History';
+  $('#'+prefix+'Filters').addEventListener('change',function(e){
+    var input=e.target;
+    if(input.id==='all'+capital+'Sizes') {S[prefix+'AllSizes']=input.checked;S[prefix+'Sizes']=[];}
+    else if(input.name===prefix+'Size') {S[prefix+'AllSizes']=false;S[prefix+'Sizes']=$$('input[name="'+prefix+'Size"]:checked').map(function(x){return x.value;});}
+    else {
+      var suffix=input.name===prefix+'Status'?'Statuses':input.name===prefix+'Type'?'Types':null;
+      if(!suffix) return;
+      S[prefix+suffix]=input.value==='todos' ? (input.checked?['todos']:[]) : $$('input[name="'+input.name+'"]:checked').filter(function(x){return x.value!=='todos';}).map(function(x){return x.value;});
+    }
+    renderFilter();
+  });
+  $('#clear'+capital+'Filters').addEventListener('click',function(){
+    S[prefix+'Sizes']=[];S[prefix+'Statuses']=[];S[prefix+'AllSizes']=false;
+    if(prefix==='history') S.historyTypes=[];
+    renderFilter();
   });
 }
-bindSeg('#segHist', 'fHist', renderHist);
-
+bindFilter('stock',renderEstoque);
+bindFilter('history',renderHist);
+$('#qEstoque').addEventListener('input', function(e){ S.qEstoque = e.target.value; renderEstoque(); });
+$('#qHist').addEventListener('input', function(e){ S.qHist = e.target.value; renderHist(); });
 /* Cliques gerais */
 document.addEventListener('click', async function(e){
-  if(!$('#stockFilters').contains(e.target)) $('#stockFilters').open=false;
+  ['stock','history'].forEach(function(prefix){var filter=$('#'+prefix+'Filters');if(!filter.contains(e.target)) filter.open=false;});
   var t = e.target.closest('[data-go],[data-act],[data-del-mov],[data-close],[data-newprod],[data-detail]');
   if (e.target.classList && e.target.classList.contains('overlay')) {
     if (e.target.id === 'ovConf') endConfirm(false); else closeOv('#' + e.target.id);
@@ -983,7 +1017,8 @@ $('#cfYes').addEventListener('click', function(){ endConfirm(true); });
 $('#cfNo').addEventListener('click', function(){ endConfirm(false); });
 document.addEventListener('keydown', function(e){
   if (e.key !== 'Escape') return;
-  if($('#stockFilters').open){$('#stockFilters').open=false;$('#stockFilters summary').focus();return;}
+  var filter=$$('.stock-filters').find(function(item){return item.open;});
+  if(filter){filter.open=false;$('summary',filter).focus();return;}
   if (!$('#ovConf').hidden) endConfirm(false);
   else if (!$('#ovProd').hidden) closeOv('#ovProd');
 });
