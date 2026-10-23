@@ -1,0 +1,10 @@
+DirectoryIndex index.php
+Options -Indexes
+<FilesMatch "^(schema\.sql|README\.md|.*\.example\.php|\.git.*)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^index\.html$ index.php [R=302,L]
+    RewriteRule ^(?:app|tests|\.git)(?:/|$) - [F,L]
+</IfModule>
