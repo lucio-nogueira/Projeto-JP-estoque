@@ -225,15 +225,9 @@ input::placeholder{color:var(--muted);opacity:.7}
       <button type="button" class="lnk" id="btnRmEx">Remover exemplos</button>
     </div>
     <div class="stats" id="stats"></div>
-    <div class="cols">
-      <div>
-        <h2 class="sec-h">Pedem reposição</h2>
-        <ul class="list" id="listAtencao"></ul>
-      </div>
-      <div>
-        <h2 class="sec-h">Últimas movimentações</h2>
-        <ul class="list" id="listRecentes"></ul>
-      </div>
+    <div>
+      <h2 class="sec-h">Pedem reposição</h2>
+      <ul class="list" id="listAtencao"></ul>
     </div>
   </section>
 
@@ -244,12 +238,17 @@ input::placeholder{color:var(--muted);opacity:.7}
     </div>
     <div class="tools">
       <input id="qEstoque" type="search" placeholder="Buscar por nome, código ou categoria" aria-label="Buscar produto" autocomplete="off">
+      <div class="field" style="margin:0;min-width:180px">
+        <label for="sizeEstoque">Numeração</label>
+        <select id="sizeEstoque"><option value="">Todas as numerações</option></select>
+      </div>
       <div class="seg" id="segEstoque" role="group" aria-label="Filtrar produtos">
         <button type="button" data-f="todos" aria-pressed="true">Todos</button>
         <button type="button" data-f="baixo" aria-pressed="false">Baixo</button>
         <button type="button" data-f="zerado" aria-pressed="false">Zerado</button>
       </div>
     </div>
+    <p class="hint" id="sizeSummary" role="status" hidden></p>
     <p class="hint">Selecione um produto para consultar suas características e o saldo por numeração.</p>
     <div class="sheet-wrap"><table class="sheet"><caption class="sr-only">Estoque de produtos</caption><thead><tr><th>Produto / código</th><th>Categoria</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Situação</th><th>Ações</th></tr></thead><tbody id="listEstoque"></tbody></table></div>
   </section>
@@ -455,7 +454,7 @@ var clean = function(o){ return JSON.parse(JSON.stringify(o)); };
 var VIEWS = ['painel', 'estoque', 'entrada', 'saida', 'historico'];
 var S = {
   produtos: [], movimentos: [], ready: false, mode: 'local', memOnly: false,
-  view: 'painel', fEstoque: 'todos', qEstoque: '', fHist: 'todos', qHist: ''
+  view: 'painel', fEstoque: 'todos', sizeEstoque: '', qEstoque: '', fHist: 'todos', qHist: ''
 };
 var DB = null, calcMap = new Map(), pMap = new Map();
 var LS_KEY = 'jp-gerencial-v1';
@@ -560,8 +559,8 @@ function renderPainel(){
     '<div class="stat"><span>Valor em estoque</span><strong>' + money(valor) + '</strong></div>' +
     '<div class="stat"><span>Pedem reposição</span><strong>' + nf.format(atencao.length) + '</strong></div>';
 
-  var la = $('#listAtencao'), lr = $('#listRecentes');
-  if (!S.ready) { la.innerHTML = lr.innerHTML = loadingRow(); return; }
+  var la = $('#listAtencao');
+  if (!S.ready) { la.innerHTML = loadingRow(); return; }
 
   atencao.sort(function(a, b){ return calcMap.get(a.id).saldo - calcMap.get(b.id).saldo; });
   la.innerHTML = atencao.length ? atencao.slice(0, 6).map(function(p){
@@ -572,22 +571,45 @@ function renderPainel(){
       '<button type="button" class="lnk" data-act="in" data-id="' + esc(p.id) + '">Repor</button></li>';
   }).join('') : '<li class="empty">Nenhum produto abaixo do mínimo.</li>';
 
-  var recentes = movsSorted().slice(0, 6);
-  lr.innerHTML = recentes.length ? recentes.map(function(m){ return movRow(m, false); }).join('')
-    : '<li class="empty">Nenhuma movimentação ainda.<br><button type="button" class="btn" data-go="entrada">Registrar a primeira entrada</button></li>';
+
 }
 
 function renderEstoque(){
-  var ul = $('#listEstoque');
+  var ul = $('#listEstoque'), selectedSize = S.sizeEstoque;
+  var availableSizes = new Set();
+  S.produtos.forEach(function(p){ (p.tamanhos || []).forEach(function(t){ availableSizes.add(String(t)); }); });
+  S.movimentos.forEach(function(m){ if (m.tamanho && pMap.has(m.produtoId)) availableSizes.add(String(m.tamanho)); });
+  var sizeSelect = $('#sizeEstoque');
+  sizeSelect.innerHTML = '<option value="">Todas as numerações</option>' + Array.from(availableSizes).sort(function(a,b){return a.localeCompare(b, 'pt-BR', {numeric:true});}).map(function(t){
+    return '<option value="'+esc(t)+'">Tamanho '+esc(t)+'</option>';
+  }).join('');
+  if (selectedSize && !availableSizes.has(selectedSize)) {
+    sizeSelect.add(new Option('Tamanho '+selectedSize, selectedSize));
+  }
+  sizeSelect.value = selectedSize;
+  function stockFor(p){
+    if (!selectedSize) return calcMap.get(p.id);
+    var r = {ent:0, sai:0};
+    S.movimentos.forEach(function(m){
+      if (m.produtoId === p.id && String(m.tamanho || '') === selectedSize) r[m.tipo === 'entrada' ? 'ent' : 'sai'] += +m.qtd || 0;
+    });
+    r.ent=r3(r.ent); r.sai=r3(r.sai); r.saldo=r3(r.ent-r.sai);
+    return r;
+  }
   var list = S.produtos.filter(function(p){
-    var q = S.qEstoque.trim().toLowerCase(), st = statusOf(p, calcMap.get(p.id).saldo)[0];
+    var q = S.qEstoque.trim().toLowerCase(), r = stockFor(p), st = statusOf(p, r.saldo)[0];
+    if (selectedSize && r.saldo <= 0) return false;
     return (!q || [p.nome,p.codigo,p.categoria].some(function(v){return String(v || '').toLowerCase().includes(q);})) && (S.fEstoque === 'todos' || (S.fEstoque === 'baixo' && st === 'warn') || (S.fEstoque === 'zerado' && st === 'bad'));
   }).sort(byName);
-  ul.innerHTML = !S.ready ? '<tr><td colspan="7">Carregando…</td></tr>' : !list.length ? '<tr><td colspan="7">Nenhum produto encontrado. <button class="lnk" data-newprod>Cadastrar produto</button></td></tr>' : list.map(function(p,i){
-    var r=calcMap.get(p.id), st=statusOf(p,r.saldo), id=esc(p.id);
+  var summary = $('#sizeSummary');
+  summary.hidden = !selectedSize;
+  summary.textContent = 'Tamanho '+selectedSize+' · '+list.length+' modelo(s) · '+nf.format(r3(list.reduce(function(total,p){return total+stockFor(p).saldo;},0)))+' pares disponíveis nos resultados. Entradas, saídas e saldo referem-se apenas a esta numeração.';
+  ul.innerHTML = !S.ready ? '<tr><td colspan="7">Carregando…</td></tr>' : !list.length ? '<tr><td colspan="7">Nenhum produto encontrado para os filtros selecionados. <button class="lnk" data-newprod>Cadastrar produto</button></td></tr>' : list.map(function(p,i){
+    var r=stockFor(p), st=statusOf(p,r.saldo), id=esc(p.id);
     var sizes=(p.tamanhos || []).slice();
     S.movimentos.filter(function(m){return m.produtoId===p.id;}).forEach(function(m){var key=m.tamanho || '';if(!sizes.includes(key)) sizes.push(key);});
-    return '<tr><td><button class="lnk" data-detail="detail-'+i+'" aria-expanded="false" aria-controls="detail-'+i+'">'+esc(p.nome)+'</button><span class="code">'+esc(p.codigo)+'</span></td><td>'+esc(p.categoria || '—')+'</td><td>'+nf.format(r.ent)+'</td><td>'+nf.format(r.sai)+'</td><td><strong>'+nf.format(r.saldo)+'</strong> '+esc(p.unidade)+'</td><td><span class="st '+st[0]+'">'+st[1]+'</span></td><td>'+['in','out','edit'].map(function(a,j){return '<button class="lnk" data-act="'+a+'" data-id="'+id+'">'+['Entrada','Saída','Editar'][j]+'</button>';}).join(' · ')+'</td></tr><tr id="detail-'+i+'" hidden><td colspan="7"><strong>'+esc(p.nome)+'</strong><p>Categoria: '+esc(p.categoria || '—')+' · Custo: '+bf.format(p.custo || 0)+' · Estoque mínimo: '+nf.format(p.minimo || 0)+'</p><div class="size-grid">'+sizes.map(function(t){return '<div class="size-card">'+(t ? 'Tamanho '+esc(t) : 'Sem numeração')+'<strong>'+nf.format(sizeBalance(p.id,t))+' '+esc(p.unidade)+'</strong></div>';}).join('')+'</div></td></tr>';
+    if (selectedSize) sizes = [selectedSize];
+    return '<tr><td><button class="lnk" data-detail="detail-'+i+'" aria-expanded="'+(selectedSize?'true':'false')+'" aria-controls="detail-'+i+'">'+esc(p.nome)+'</button><span class="code">'+esc(p.codigo)+'</span></td><td>'+esc(p.categoria || '—')+'</td><td>'+nf.format(r.ent)+'</td><td>'+nf.format(r.sai)+'</td><td><strong>'+nf.format(r.saldo)+'</strong> '+esc(p.unidade)+'</td><td><span class="st '+st[0]+'">'+st[1]+'</span></td><td>'+['in','out','edit'].map(function(a,j){return '<button class="lnk" data-act="'+a+'" data-id="'+id+'">'+['Entrada','Saída','Editar'][j]+'</button>';}).join(' · ')+'</td></tr><tr id="detail-'+i+'" '+(selectedSize?'':'hidden')+'><td colspan="7"><strong>'+esc(p.nome)+'</strong><p>Categoria: '+esc(p.categoria || '—')+' · Custo: '+bf.format(p.custo || 0)+' · Estoque mínimo: '+nf.format(p.minimo || 0)+'</p><div class="size-grid">'+sizes.map(function(t){return '<div class="size-card">'+(t ? 'Tamanho '+esc(t) : 'Sem numeração')+'<strong>'+nf.format(sizeBalance(p.id,t))+' '+esc(p.unidade)+'</strong></div>';}).join('')+'</div></td></tr>';
   }).join('');
 }
 
@@ -849,6 +871,7 @@ $('#formOut').addEventListener('submit', async function(e){
 });
 
 /* Filtros */
+$('#sizeEstoque').addEventListener('change',function(e){S.sizeEstoque=e.target.value;renderEstoque();});
 $('#qEstoque').addEventListener('input', function(e){ S.qEstoque = e.target.value; renderEstoque(); });
 $('#qHist').addEventListener('input', function(e){ S.qHist = e.target.value; renderHist(); });
 function bindSeg(sel, key, fn){
