@@ -114,6 +114,19 @@ h1{font-family:var(--font-display);font-weight:600;font-size:clamp(26px,6vw,36px
 /* Estoque */
 .tools{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .tools input{flex:1 1 240px}
+.stock-filters{position:relative;align-self:flex-start}
+.stock-filters summary{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 20px;border:1px solid var(--line-strong);border-radius:var(--radius);font-family:var(--font-display);font-weight:600;cursor:pointer;list-style:none;background:var(--surface)}
+.stock-filters summary::-webkit-details-marker{display:none}
+.stock-filters summary::after{content:'';width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s}
+.stock-filters[open] summary::after{transform:rotate(225deg)}
+.stock-filters[open] summary{border-color:var(--ink)}
+#stockFilterCount{border-radius:12px;background:var(--ink);color:var(--bg);padding:0 7px;font-size:12px}
+.filter-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:15;width:min(320px,calc(100vw - 32px));max-height:55vh;overflow-y:auto;padding:16px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.filter-panel fieldset{border:0;padding:0;margin:0 0 16px;min-width:0}
+.filter-panel legend{font-family:var(--font-display);font-weight:600;margin-bottom:6px}
+.filter-panel label{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-weight:400}
+.tools .filter-panel input[type="checkbox"]{flex:none;width:18px;height:18px;min-height:0;margin:0;padding:0;accent-color:var(--ink)}
+#stockSizeOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius);overflow:hidden}
 .seg button{min-height:44px;padding:0 16px;background:none;border:0;border-right:1px solid var(--line-strong);color:var(--muted);font-size:14px;font-weight:500;cursor:pointer}
 .seg button:last-child{border-right:0}
@@ -163,6 +176,8 @@ input::placeholder{color:var(--muted);opacity:.7}
   .split{grid-template-columns:minmax(0,1fr);gap:40px}
 }
 @media (max-width:719px){
+  .stock-filters{margin-left:auto}
+  .filter-panel{position:fixed;left:16px;right:16px;top:auto;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:auto;max-height:calc(100dvh - 160px)}
   #v-estoque .sheet{min-width:0;table-layout:fixed}
   #v-estoque .sheet th,#v-estoque .sheet td{padding:10px 8px;overflow-wrap:anywhere}
   #v-estoque .sheet th:nth-child(2),
@@ -255,15 +270,21 @@ input::placeholder{color:var(--muted);opacity:.7}
     </div>
     <div class="tools">
       <input id="qEstoque" type="search" placeholder="Buscar por nome, código ou categoria" aria-label="Buscar produto" autocomplete="off">
-      <div class="field" style="margin:0;min-width:180px">
-        <label for="sizeEstoque">Numeração</label>
-        <select id="sizeEstoque"><option value="">Todas as numerações</option></select>
-      </div>
-      <div class="seg" id="segEstoque" role="group" aria-label="Filtrar produtos">
-        <button type="button" data-f="todos" aria-pressed="true">Todos</button>
-        <button type="button" data-f="baixo" aria-pressed="false">Baixo</button>
-        <button type="button" data-f="zerado" aria-pressed="false">Zerado</button>
-      </div>
+      <details class="stock-filters" id="stockFilters">
+        <summary>Filtrar <span id="stockFilterCount" hidden></span></summary>
+        <div class="filter-panel">
+          <fieldset><legend>Numeração</legend>
+            <label><input type="checkbox" id="allStockSizes" checked> Todas as numerações</label>
+            <div id="stockSizeOptions"></div>
+          </fieldset>
+          <fieldset><legend>Situação do estoque</legend>
+            <label><input type="checkbox" name="stockStatus" value="todos" checked> Todos</label>
+            <label><input type="checkbox" name="stockStatus" value="baixo"> Baixo</label>
+            <label><input type="checkbox" name="stockStatus" value="zerado"> Zerado</label>
+          </fieldset>
+          <button type="button" class="lnk" id="clearStockFilters">Limpar filtros</button>
+        </div>
+      </details>
     </div>
     <p class="hint" id="sizeSummary" role="status" hidden></p>
     <p class="hint">Selecione um produto para consultar suas características e o saldo por numeração.</p>
@@ -471,7 +492,7 @@ var clean = function(o){ return JSON.parse(JSON.stringify(o)); };
 var VIEWS = ['painel', 'estoque', 'entrada', 'saida', 'historico'];
 var S = {
   produtos: [], movimentos: [], ready: false, mode: 'local', memOnly: false,
-  view: 'painel', fEstoque: 'todos', sizeEstoque: '', qEstoque: '', fHist: 'todos', qHist: ''
+  view: 'painel', stockStatuses: [], stockSizes: [], qEstoque: '', fHist: 'todos', qHist: ''
 };
 var DB = null, calcMap = new Map(), pMap = new Map();
 var LS_KEY = 'jp-gerencial-v1';
@@ -592,40 +613,63 @@ function renderPainel(){
 }
 
 function renderEstoque(){
-  var ul = $('#listEstoque'), selectedSize = S.sizeEstoque;
+  var ul = $('#listEstoque'), selectedSizes = S.stockSizes, selectedSize = selectedSizes.length > 0;
   var availableSizes = new Set();
-  S.produtos.forEach(function(p){ (p.tamanhos || []).forEach(function(t){ availableSizes.add(String(t)); }); });
-  S.movimentos.forEach(function(m){ if (m.tamanho && pMap.has(m.produtoId)) availableSizes.add(String(m.tamanho)); });
-  var sizeSelect = $('#sizeEstoque');
-  sizeSelect.innerHTML = '<option value="">Todas as numerações</option>' + Array.from(availableSizes).sort(function(a,b){return a.localeCompare(b, 'pt-BR', {numeric:true});}).map(function(t){
-    return '<option value="'+esc(t)+'">Tamanho '+esc(t)+'</option>';
-  }).join('');
-  if (selectedSize && !availableSizes.has(selectedSize)) {
-    sizeSelect.add(new Option('Tamanho '+selectedSize, selectedSize));
+  function productSizes(p){
+    var sizes = new Set((p.tamanhos || []).map(String));
+    S.movimentos.forEach(function(m){if(m.produtoId === p.id && m.tamanho) sizes.add(String(m.tamanho));});
+    return Array.from(sizes);
   }
-  sizeSelect.value = selectedSize;
+  S.produtos.forEach(function(p){productSizes(p).forEach(function(t){availableSizes.add(t);});});
+  var sizeOptions = $('#stockSizeOptions');
+  var orderedSizes = Array.from(new Set(Array.from(availableSizes).concat(selectedSizes))).sort(function(a,b){return a.localeCompare(b,'pt-BR',{numeric:true});});
+  var signature = JSON.stringify(orderedSizes);
+  if (sizeOptions.dataset.signature !== signature) {
+    sizeOptions.dataset.signature = signature;
+    sizeOptions.innerHTML = orderedSizes.length ? orderedSizes.map(function(t){return '<label><input type="checkbox" name="stockSize" value="'+esc(t)+'"> Tamanho '+esc(t)+'</label>';}).join('') : '<p class="hint">Nenhuma numeração cadastrada.</p>';
+  }
+  $$('input[name="stockSize"]').forEach(function(input){input.checked=selectedSizes.includes(input.value);});
+  $('#allStockSizes').checked = !selectedSizes.length;
+  $$('input[name="stockStatus"]').forEach(function(input){input.checked=input.value==='todos' ? !S.stockStatuses.length : S.stockStatuses.includes(input.value);});
+  var count = selectedSizes.length + S.stockStatuses.length;
+  $('#stockFilterCount').hidden = !count;
+  $('#stockFilterCount').textContent = count;
+  function matchesStatus(p,saldo){
+    var st=statusOf(p,saldo)[0];
+    return !S.stockStatuses.length || (S.stockStatuses.includes('baixo') && st==='warn') || (S.stockStatuses.includes('zerado') && st==='bad');
+  }
+  function matchingSizes(p){
+    return productSizes(p).filter(function(t){return selectedSizes.includes(t) && matchesStatus(p,sizeBalance(p.id,t));});
+  }
   function stockFor(p){
     if (!selectedSize) return calcMap.get(p.id);
-    var r = {ent:0, sai:0};
+    var sizes=matchingSizes(p), r={ent:0,sai:0};
     S.movimentos.forEach(function(m){
-      if (m.produtoId === p.id && String(m.tamanho || '') === selectedSize) r[m.tipo === 'entrada' ? 'ent' : 'sai'] += +m.qtd || 0;
+      if(m.produtoId===p.id && sizes.includes(String(m.tamanho || ''))) r[m.tipo==='entrada'?'ent':'sai']+= +m.qtd || 0;
     });
-    r.ent=r3(r.ent); r.sai=r3(r.sai); r.saldo=r3(r.ent-r.sai);
+    r.ent=r3(r.ent);r.sai=r3(r.sai);r.saldo=r3(r.ent-r.sai);
     return r;
   }
   var list = S.produtos.filter(function(p){
-    var q = S.qEstoque.trim().toLowerCase(), r = stockFor(p), st = statusOf(p, r.saldo)[0];
-    if (selectedSize && r.saldo <= 0) return false;
-    return (!q || [p.nome,p.codigo,p.categoria].some(function(v){return String(v || '').toLowerCase().includes(q);})) && (S.fEstoque === 'todos' || (S.fEstoque === 'baixo' && st === 'warn') || (S.fEstoque === 'zerado' && st === 'bad'));
+    var q = S.qEstoque.trim().toLowerCase();
+    if(selectedSize ? !matchingSizes(p).length : !matchesStatus(p,calcMap.get(p.id).saldo)) return false;
+    return !q || [p.nome,p.codigo,p.categoria].some(function(v){return String(v || '').toLowerCase().includes(q);});
   }).sort(byName);
   var summary = $('#sizeSummary');
-  summary.hidden = !selectedSize;
-  summary.textContent = 'Tamanho '+selectedSize+' · '+list.length+' modelo(s) · '+nf.format(r3(list.reduce(function(total,p){return total+stockFor(p).saldo;},0)))+' pares disponíveis nos resultados. Entradas, saídas e saldo referem-se apenas a esta numeração.';
+  summary.hidden = !count;
+  var labels=[];
+  if(selectedSize) labels.push('Numeração: '+selectedSizes.join(', '));
+  if(S.stockStatuses.length) labels.push('Situação: '+S.stockStatuses.map(function(st){return st==='baixo'?'Baixo':'Zerado';}).join(', '));
+  summary.textContent=labels.join(' · ')+' · '+list.length+' modelo(s) · Saldo: '+nf.format(r3(list.reduce(function(total,p){return total+stockFor(p).saldo;},0)))+' pares.'+(selectedSize?' Quantidades referentes às numerações que atendem aos filtros.':'');
   ul.innerHTML = !S.ready ? '<tr><td colspan="7">Carregando…</td></tr>' : !list.length ? '<tr><td colspan="7">Nenhum produto encontrado para os filtros selecionados. <button class="lnk" data-newprod>Cadastrar produto</button></td></tr>' : list.map(function(p,i){
     var r=stockFor(p), st=statusOf(p,r.saldo), id=esc(p.id);
     var sizes=(p.tamanhos || []).slice();
     S.movimentos.filter(function(m){return m.produtoId===p.id;}).forEach(function(m){var key=m.tamanho || '';if(!sizes.includes(key)) sizes.push(key);});
-    if (selectedSize) sizes = [selectedSize];
+    if (selectedSize) {
+      sizes = matchingSizes(p);
+      var states = sizes.map(function(t){return statusOf(p,sizeBalance(p.id,t));});
+      st = states.every(function(state){return state[0]===states[0][0];}) ? states[0] : ['warn','Varia por numeração'];
+    }
     return '<tr><td><button class="lnk" data-detail="detail-'+i+'" aria-expanded="'+(selectedSize?'true':'false')+'" aria-controls="detail-'+i+'">'+esc(p.nome)+'</button><span class="code">'+esc(p.codigo)+'</span></td><td>'+esc(p.categoria || '—')+'</td><td>'+nf.format(r.ent)+'</td><td>'+nf.format(r.sai)+'</td><td><strong>'+nf.format(r.saldo)+'</strong> '+esc(p.unidade)+'</td><td><span class="st '+st[0]+'">'+st[1]+'</span></td><td>'+['in','out','edit'].map(function(a,j){return '<button class="lnk" data-act="'+a+'" data-id="'+id+'">'+['Entrada','Saída','Editar'][j]+'</button>';}).join(' · ')+'</td></tr><tr id="detail-'+i+'" '+(selectedSize?'':'hidden')+'><td colspan="7"><strong>'+esc(p.nome)+'</strong><p>Categoria: '+esc(p.categoria || '—')+' · Custo: '+bf.format(p.custo || 0)+' · Estoque mínimo: '+nf.format(p.minimo || 0)+'</p><div class="size-grid">'+sizes.map(function(t){return '<div class="size-card">'+(t ? 'Tamanho '+esc(t) : 'Sem numeração')+'<strong>'+nf.format(sizeBalance(p.id,t))+' '+esc(p.unidade)+'</strong></div>';}).join('')+'</div></td></tr>';
   }).join('');
 }
@@ -888,7 +932,16 @@ $('#formOut').addEventListener('submit', async function(e){
 });
 
 /* Filtros */
-$('#sizeEstoque').addEventListener('change',function(e){S.sizeEstoque=e.target.value;renderEstoque();});
+$('#stockFilters').addEventListener('change',function(e){
+  var input=e.target;
+  if(input.id==='allStockSizes') S.stockSizes=[];
+  else if(input.name==='stockSize') S.stockSizes=$$('input[name="stockSize"]:checked').map(function(x){return x.value;});
+  else if(input.name==='stockStatus') {
+    S.stockStatuses=input.value==='todos' ? [] : $$('input[name="stockStatus"]:checked').filter(function(x){return x.value!=='todos';}).map(function(x){return x.value;});
+  }
+  renderEstoque();
+});
+$('#clearStockFilters').addEventListener('click',function(){S.stockSizes=[];S.stockStatuses=[];renderEstoque();});
 $('#qEstoque').addEventListener('input', function(e){ S.qEstoque = e.target.value; renderEstoque(); });
 $('#qHist').addEventListener('input', function(e){ S.qHist = e.target.value; renderHist(); });
 function bindSeg(sel, key, fn){
@@ -899,11 +952,11 @@ function bindSeg(sel, key, fn){
     fn();
   });
 }
-bindSeg('#segEstoque', 'fEstoque', renderEstoque);
 bindSeg('#segHist', 'fHist', renderHist);
 
 /* Cliques gerais */
 document.addEventListener('click', async function(e){
+  if(!$('#stockFilters').contains(e.target)) $('#stockFilters').open=false;
   var t = e.target.closest('[data-go],[data-act],[data-del-mov],[data-close],[data-newprod],[data-detail]');
   if (e.target.classList && e.target.classList.contains('overlay')) {
     if (e.target.id === 'ovConf') endConfirm(false); else closeOv('#' + e.target.id);
@@ -930,6 +983,7 @@ $('#cfYes').addEventListener('click', function(){ endConfirm(true); });
 $('#cfNo').addEventListener('click', function(){ endConfirm(false); });
 document.addEventListener('keydown', function(e){
   if (e.key !== 'Escape') return;
+  if($('#stockFilters').open){$('#stockFilters').open=false;$('#stockFilters summary').focus();return;}
   if (!$('#ovConf').hidden) endConfirm(false);
   else if (!$('#ovProd').hidden) closeOv('#ovProd');
 });
