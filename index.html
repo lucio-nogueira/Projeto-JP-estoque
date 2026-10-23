@@ -163,6 +163,23 @@ input::placeholder{color:var(--muted);opacity:.7}
   .split{grid-template-columns:minmax(0,1fr);gap:40px}
 }
 @media (max-width:719px){
+  #v-estoque .sheet{min-width:0;table-layout:fixed}
+  #v-estoque .sheet th,#v-estoque .sheet td{padding:10px 8px;overflow-wrap:anywhere}
+  #v-estoque .sheet th:nth-child(2),
+  #v-estoque .sheet th:nth-child(3),
+  #v-estoque .sheet th:nth-child(4),
+  #v-estoque .sheet th:nth-child(6),
+  #listEstoque > tr > td:not([colspan]):nth-child(2),
+  #listEstoque > tr > td:not([colspan]):nth-child(3),
+  #listEstoque > tr > td:not([colspan]):nth-child(4),
+  #listEstoque > tr > td:not([colspan]):nth-child(6){display:none}
+  #v-estoque .sheet th:first-child{width:44%}
+  #v-estoque .sheet th:nth-child(5){width:22%}
+  #v-estoque .sheet th:last-child{width:34%}
+  #v-estoque .sheet th{font-size:11px}
+  #listEstoque > tr > td:not([colspan]):last-child{font-size:0}
+  #listEstoque > tr > td:not([colspan]):last-child .lnk{display:block;min-height:36px;font-size:12px}
+  #v-estoque .stock-heading-code{display:none}
   .nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:var(--bg);border-top:1px solid var(--line);padding-top:4px;padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .nav button{flex-direction:column;justify-content:center;gap:3px;min-height:56px;padding:6px 0;border-bottom:0;margin-bottom:0;font-size:11px}
   .nav button[aria-current="page"]{border-bottom:0}
@@ -250,7 +267,7 @@ input::placeholder{color:var(--muted);opacity:.7}
     </div>
     <p class="hint" id="sizeSummary" role="status" hidden></p>
     <p class="hint">Selecione um produto para consultar suas características e o saldo por numeração.</p>
-    <div class="sheet-wrap"><table class="sheet"><caption class="sr-only">Estoque de produtos</caption><thead><tr><th>Produto / código</th><th>Categoria</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Situação</th><th>Ações</th></tr></thead><tbody id="listEstoque"></tbody></table></div>
+    <div class="sheet-wrap"><table class="sheet"><caption class="sr-only">Estoque de produtos</caption><thead><tr><th>Produto<span class="stock-heading-code"> / código</span></th><th>Categoria</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Situação</th><th>Ações</th></tr></thead><tbody id="listEstoque"></tbody></table></div>
   </section>
 
   <section class="view" id="v-entrada" hidden>
